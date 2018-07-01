@@ -95,7 +95,7 @@ def set_schedule(sun_hour, sun_min, mon_hour, mon_min, tues_hour, tues_min, wed_
 
 
 def set_day_time(day=0, hour=0, minute=0):
-    return pack_3signed_bytes([168, day, hour, minute])
+    return pack_3signed_bytes(168, day, hour, minute)
 
 
 def drive(velocity, radius):
