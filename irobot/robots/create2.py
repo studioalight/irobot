@@ -1,4 +1,5 @@
 __author__ = 'Matthew Witherwax (lemoneer)'
+__maintainer__ = "Daniel Macías Perea (dani.macias.perea@domoticproject.com)"
 
 import types
 from time import sleep, time
@@ -679,7 +680,7 @@ class Create2(object):
     def firmware_version(self):
         self.reset()
         sleep(5)
-        msg = self._serial_port.read(2048).decode('utf-8')
+        msg = self._serial_port.read(1024).decode('utf-8')
         self.start()
         self._serial_port.reset_input_buffer()  # reset_input_buffer() in pyserial 3.0
         return msg
