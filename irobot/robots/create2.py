@@ -5,6 +5,7 @@ from time import sleep, time
 import logging
 import serial
 from six import raise_from, iterbytes
+import RPi.GPIO as GPIO
 
 from irobot.openinterface.commands import set_mode_full, set_mode_passive, set_mode_safe, power_down, reset, start, stop, \
     drive, drive_direct, drive_pwm, seek_dock, set_baud, set_day_time, set_schedule, clean, clean_max, clean_spot, \
@@ -22,21 +23,40 @@ _error_msg_range = 'Argument {0} out of range'
 
 
 class Create2(object):
-    def __init__(self, port, baud_rate=115200, timeout=1, auto_wake=True, enable_quirks=True):
+    def __init__(self, port, brc_pin=0, baud_rate=115200, timeout=1, auto_wake=True, enable_quirks=True):
         self._auto_wake = auto_wake
         self._oi_mode = MODES.OFF
         self._last_command_time = time()
-
+        
         self._enable_quirks = enable_quirks
         self._toggle_quirks()
 
         self.logger = logging.getLogger('Create2')
-
+        
+        #If Roomba BRC pin is set , configure GPIO as wake up pin and configure correct wake function
+        self._brc_pin = brc_pin
+        if (self._brc_pin != 0):
+            self.wake = types.MethodType(Create2._wake_BRC, self)
+            GPIO.setmode(GPIO.BCM) 
+            GPIO.setwarnings(False)
+            GPIO.setup(self._brc_pin, GPIO.OUT)
+            GPIO.output(self._brc_pin, True)
+            sleep(1)
+            GPIO.output(self._brc_pin, False)
+            sleep(1)
+            GPIO.output(self._brc_pin, True)
+        else:
+            self.wake = types.MethodType(Create2._wake_RTS, self)
+            
         self._attach_to_robot(port, baud_rate, timeout)
+        
+
 
     def __del__(self):
         self.stop()
         self._serial_port.close()
+        if (self._brc_pin != 0):
+            GPIO.cleanup()
 
     def _attach_to_robot(self, port, baud_rate, timeout):
         try:
@@ -62,17 +82,27 @@ class Create2(object):
         self._log_send(data)
 
         self._handle_auto_wake()
-        self._last_command_time = time()
+        
+        #Roomba will sleep after 5 minutes of inactivity.
+        #Requesting a data packet is not considered as activity.
+        if (data[0] != 142):
+            self._last_command_time = time()
+            
         self._serial_port.write(data)
 
     def _read_sensor_data(self, id):
+        #Flush input buffer to avoid inconsistent reads
+        self._serial_port.reset_input_buffer()
+        
         self._send(request_sensor_data(id))
         size = RESPONSE_SIZES[id]
         data = self._serial_port.read(size)
-
+        
+        #If no data was received, wake the roomba JIC
         if len(data) != size:
-            raise Exception("Did not receive data")
-
+            self.wake()
+            raise Exception('Received %d bytes but %d where expected', len(data), size)      
+               
         self.logger.info('Received\n{0}'.format(self._format_data(data)))
 
         return data
@@ -82,8 +112,8 @@ class Create2(object):
             return
 
         now = time()
-        # wake the robot if the last command was sent any time after power save minus 15 seconds
-        if (now - self._last_command_time) >= POWER_SAVE_TIME - 15:
+        # wake the robot if the last command was sent any time after power saves
+        if (now - self._last_command_time) >= POWER_SAVE_TIME :
             self.wake()
 
     def _log_send(self, data):
@@ -150,8 +180,21 @@ class Create2(object):
     @auto_wake.setter
     def auto_wake(self, value):
         self._auto_wake = value
-
+        
     def wake(self):
+        pass
+
+    def _wake_BRC(self):
+        self.logger.info('Waking robot after {0:.2f} seconds of inactivity'.format(time() - self._last_command_time))
+        GPIO.output(self._brc_pin, False)
+        sleep(1)
+        GPIO.output(self._brc_pin, True)
+        sleep(1)
+        # after a wake up the robot sends some information. Flush it!
+        self._serial_port.reset_input_buffer()
+        self._last_command_time = time()
+        
+    def _wake_RTS(self):
         self.logger.info('Waking robot after {0:.2f} seconds of inactivity'.format(time() - self._last_command_time))
         self._serial_port.setRTS(True)  # rts in pyserial 3.0
         sleep(1)
@@ -159,7 +202,10 @@ class Create2(object):
         sleep(1)
         self._serial_port.setRTS(True)
         sleep(1)
-
+        # after a wake up the robot sends some information. Flush it!
+        self._serial_port.reset_input_buffer()
+        self._last_command_time = time()           
+       
     def start(self):
         self._send(start())
 
@@ -168,7 +214,7 @@ class Create2(object):
         if welcome_message is not None:
             self.logger.info('First 1024 characters of welcome message: {0}'.format(welcome_message))
         # flush anything after the first 1024 bytes
-        self._serial_port.flushInput()  # reset_input_buffer() in pyserial 3.0
+        self._serial_port.reset_input_buffer()
 
         self._verify_mode(MODES.PASSIVE)
 
@@ -250,7 +296,6 @@ class Create2(object):
             raise ValueError(_error_msg_range.format('hour'))
         if not self._is_valid_minute(minute):
             raise ValueError(_error_msg_range.format('minute'))
-
         self._send(set_day_time(day, hour, minute))
 
     def drive(self, velocity, radius):
@@ -634,9 +679,9 @@ class Create2(object):
     def firmware_version(self):
         self.reset()
         sleep(5)
-        msg = self._serial_port.read(1024).decode('utf-8')
+        msg = self._serial_port.read(2048).decode('utf-8')
         self.start()
-        self._serial_port.flushInput()  # reset_input_buffer() in pyserial 3.0
+        self._serial_port.reset_input_buffer()  # reset_input_buffer() in pyserial 3.0
         return msg
 
 
