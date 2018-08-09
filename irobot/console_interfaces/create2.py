@@ -16,8 +16,8 @@ def check_for_quirks(robot):
 
     print('Checking firmware for quirks')
     print('Restarting Robot...')
-
     boot_message = robot.firmware_version.split(u'\r\n')
+  
     for line in boot_message:
         if match(FIRMWARE_PREFIX, line):
             print('Found firmware:', line)
@@ -64,16 +64,33 @@ def _configure_logger():
 
 def main():
     import code
+    import atexit
+    import os
+    import readline
+    import rlcompleter
+    
+    historyPath = os.path.expanduser("~/.pyhistory")
 
+    def save_history(historyPath=historyPath):
+        import readline
+        readline.write_history_file(historyPath)
+
+    if os.path.exists(historyPath):
+        readline.read_history_file(historyPath)
+
+    atexit.register(save_history)
+    del os, atexit, readline, rlcompleter, save_history, historyPath
+    
     print('Launching REPL')
     port = input('Serial Port> ')
+    brc_pin = int(input('BRC Pin> '))
     print()
-
+    
     # give the user a way out before we launch into interactive mode
     if port.lower() == 'quit()':
         return
     try:
-        robot = Create2(port)
+        robot = Create2(port,brc_pin)
     except RobotConnectionError as e:
         print(e, '\nInner Exception:', e.__cause__)
         return
