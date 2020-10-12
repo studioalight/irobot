@@ -30,7 +30,7 @@ LIGHT_BUMPER        = Constant(LEFT=0x01, FRONT_LEFT=0x02, CENTER_LEFT=0x04, CEN
                                RIGHT=0x20)
 STASIS              = Constant(TOGGLING=0x01, DISABLED=0x02)
 
-POWER_SAVE_TIME = 300   # seconds
+POWER_SAVE_TIME = 90 # 300   # seconds
 
 RESPONSE_SIZES = {0: 26, 1: 10, 2: 6, 3: 10, 4: 14, 5: 12, 6: 52,
                   # actual sensors

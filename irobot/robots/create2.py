@@ -24,7 +24,7 @@ _error_msg_range = 'Argument {0} out of range'
 
 
 class Create2(object):
-    def __init__(self, port, brc_pin=0, baud_rate=115200, timeout=1, auto_wake=True, enable_quirks=True):
+    def __init__(self, port, logger, brc_pin=0, baud_rate=115200, timeout=1, auto_wake=True, enable_quirks=True):
         self._auto_wake = auto_wake
         self._oi_mode = MODES.OFF
         self._last_command_time = time()
@@ -32,8 +32,12 @@ class Create2(object):
         self._enable_quirks = enable_quirks
         self._toggle_quirks()
 
-        self.logger = logging.getLogger('Create2')
-        
+        self.logger = logger
+
+        self._attach_to_robot(port, baud_rate, timeout)
+
+#        self.logger = logging.getLogger('Create2')
+        self.logger.info('Autowake {} BRC Pin {}'.format(self._auto_wake,brc_pin))
         #If Roomba BRC pin is set , configure GPIO as wake up pin and configure correct wake function
         self._brc_pin = brc_pin
         if (self._brc_pin != 0):
@@ -48,8 +52,13 @@ class Create2(object):
             GPIO.output(self._brc_pin, True)
         else:
             self.wake = types.MethodType(Create2._wake_RTS, self)
+            self._serial_port.setRTS(True)  # rts in pyserial 3.0
+            sleep(1)
+            self._serial_port.setRTS(False)
+            sleep(1)
+            self._serial_port.setRTS(True)
             
-        self._attach_to_robot(port, baud_rate, timeout)
+#        self._attach_to_robot(port, baud_rate, timeout)
         
 
 
@@ -110,16 +119,17 @@ class Create2(object):
 
     def _handle_auto_wake(self):
         if not self._auto_wake or self._oi_mode != MODES.PASSIVE:
+            self.logger.info('Waking robot in mode {}'.format(self._oi_mode))
             return
 
         now = time()
         # wake the robot if the last command was sent any time after power saves
-        if (now - self._last_command_time) >= POWER_SAVE_TIME :
+        if (now - self._last_command_time) >= POWER_SAVE_TIME - 15:
             self.wake()
 
     def _log_send(self, data):
-        self.logger.info('Last command sent {0:.2f} seconds ago\nSending Command\n{1}'.format(
-            time() - self._last_command_time,
+        self.logger.info('OI mode {0:d} Last command sent {0:.2f} seconds ago\nSending Command\n{1}'.format(
+            self._oi_mode, time() - self._last_command_time,
             self._format_data(data)
         ))
 
@@ -154,6 +164,7 @@ class Create2(object):
         self._verify_mode(mode)
 
     def _verify_mode(self, mode):
+        pass
         if self.oi_mode != mode:
             raise ModeChangeError(mode, self._oi_mode)
 
@@ -186,7 +197,7 @@ class Create2(object):
         pass
 
     def _wake_BRC(self):
-        self.logger.info('Waking robot after {0:.2f} seconds of inactivity'.format(time() - self._last_command_time))
+        self.logger.info('Waking robot by GPIO after {0:.2f} seconds of inactivity'.format(time() - self._last_command_time))
         GPIO.output(self._brc_pin, False)
         sleep(1)
         GPIO.output(self._brc_pin, True)
@@ -196,9 +207,9 @@ class Create2(object):
         self._last_command_time = time()
         
     def _wake_RTS(self):
-        self.logger.info('Waking robot after {0:.2f} seconds of inactivity'.format(time() - self._last_command_time))
-        self._serial_port.setRTS(True)  # rts in pyserial 3.0
-        sleep(1)
+        self.logger.info('Waking robot by RTS after {0:.2f} seconds of inactivity'.format(time() - self._last_command_time))
+#        self._serial_port.setRTS(True)  # rts in pyserial 3.0
+#        sleep(1)
         self._serial_port.setRTS(False)
         sleep(1)
         self._serial_port.setRTS(True)
@@ -541,7 +552,8 @@ class Create2(object):
 
     @property
     def oi_mode(self):
-        self._oi_mode = unsigned_byte_response(self._read_sensor_data(35))
+        self._oi_mode = unsigned_byte_response(self._read_sensor_data(35))-1
+        print('OI mode {0:d}\n'.format(unsigned_byte_response(self._read_sensor_data(35))-1))
         return self._oi_mode
 
     @oi_mode.setter

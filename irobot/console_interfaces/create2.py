@@ -54,10 +54,10 @@ def _configure_logger():
     logger = logging.getLogger('Create2')
     logger.setLevel(logging.INFO)
     ch = logging.StreamHandler(stdout)
-    ch.setLevel(logging.INFO)
+    ch.setLevel(logging.DEBUG)
     ch.setFormatter(Formatter('%(levelname)s\n%(message)s'))
     logger.addHandler(ch)
-    logger.disabled = True
+    logger.disabled = False
 
     return logger
 
@@ -86,11 +86,12 @@ def main():
     brc_pin = int(input('BRC Pin> '))
     print()
     
+    logger = _configure_logger()
     # give the user a way out before we launch into interactive mode
     if port.lower() == 'quit()':
         return
     try:
-        robot = Create2(port,brc_pin)
+        robot = Create2(port,logger,brc_pin)
     except RobotConnectionError as e:
         print(e, '\nInner Exception:', e.__cause__)
         return
