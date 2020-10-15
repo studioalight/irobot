@@ -85,8 +85,20 @@ class Create2(object):
 
         # wait for the robot to wake up on connection opened
         sleep(1)
+        self.logger.info('Starting.....')
 
         self.start()
+
+        sleep(1)
+
+        # Stop roomba if roomba is moving and program is restarted in case of power outages/glitches like when it docks/undocks
+        chargerstate = self.charging_state
+        self.logger.info('Charging state: {0}'.format(chargerstate))
+        if chargerstate == 0: # Dont go to safe mode in charger, it will kill power on DIN connector
+            self.logger.info('Started off the charger')
+            self._change_mode(MODES.SAFE)
+        else:
+            self.logger.info('Started on the charger')
 
     def _send(self, data):
         self._log_send(data)
@@ -128,10 +140,11 @@ class Create2(object):
             self.wake()
 
     def _log_send(self, data):
-        self.logger.info('OI mode {0:d} Last command sent {0:.2f} seconds ago\nSending Command\n{1}'.format(
+        self.logger.info('OI mode {0:d} Last command sent {0:.2f} seconds ago\nSending Command\n{0:d}'.format(
             self._oi_mode, time() - self._last_command_time,
             self._format_data(data)
         ))
+        self.logger.info('Sent\n{0}'.format(self._format_data(data)))
 
     @staticmethod
     def _format_data(data):
